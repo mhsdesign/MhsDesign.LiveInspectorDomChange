@@ -1,0 +1,13 @@
+Neos:
+  Neos:
+    fusion:
+      autoInclude:
+        "MhsDesign.LiveInspectorDomChange": true
+
+  Fusion:
+    defaultContext:
+      Editable: MhsDesign\LiveInspectorDomChange\Fusion\Editable\Editable
+
+MhsDesign:
+  LiveInspectorDomChange:
+    debug: false
