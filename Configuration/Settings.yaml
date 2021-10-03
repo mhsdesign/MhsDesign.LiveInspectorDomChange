@@ -7,7 +7,3 @@ Neos:
   Fusion:
     defaultContext:
       Editable: MhsDesign\LiveInspectorDomChange\Fusion\Editable\Editable
-
-MhsDesign:
-  LiveInspectorDomChange:
-    debug: false

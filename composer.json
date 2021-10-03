@@ -1,15 +1,21 @@
 {
-    "description": "Neos Live Inspector",
+    "description": "Neos Live Inspector Package, which reflects changes to the dom via MhsDesign.LiveInspectorJsEvents",
     "type": "neos-package",
     "name": "mhsdesign/liveinspectordomchange",
     "license": "GPL-3.0+",
     "require": {
         "neos/neos": "^5.0 || ^7.0",
+        "neos/flow": "^6.0 || ^7.0",
         "mhsdesign/liveinspectorjsevents": "^1.0"
     },
     "autoload": {
         "psr-4": {
-            "MhsDesign\\LiveInspectorDomChange\\": "Classes/"
+            "MhsDesign\\LiveInspectorDomChange\\": "Classes"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MhsDesign\\LiveInspectorDomChange\\Tests\\": "Tests"
         }
     },
     "extra": {

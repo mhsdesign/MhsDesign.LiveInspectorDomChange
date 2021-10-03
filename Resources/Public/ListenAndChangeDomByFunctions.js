@@ -1,140 +1,129 @@
 // global hook in point
-if (typeof liveChangeFunctions === "undefined")
+if (typeof liveChangeFunctions === 'undefined')
     var liveChangeFunctions = {}
 
-function reactToLiveInspectorChanges() {
-    // local cache for the COMMIT action
-    const lastNodeChange = {
-        nodeContextPath: "",
-        properties: {}
-    }
+reactToLiveInspectorChanges = () => {
+    const COMMIT = 'COMMIT'
+    const DISCARD = 'DISCARD'
 
-    function getAllMatchingDomNodesWithChangerByCrNode(domCrNode, propName) {
-        function getNodeAndChangerWhenNodeMatchesPropName(node) {
-            if (node.matches("[data-__has_change-props]") === false)
-                return
+    // cache for the COMMIT action
+    // so that when changing fx. the css class the changeClass function can remove the old css class.
+    class SingleCrNodeValueCache {
+        #nodeContextPath = ''
+        #nodeProperties = {}
 
-            for (const [key, rawValue] of Object.entries(node.dataset)) {
-                if (key.startsWith("__changeProps") === false)
-                    continue
+        crNodeIsCached = contextPath => this.#nodeContextPath === contextPath
+        getCachedProperty = propName => this.#nodeProperties[propName]
+        clearCacheOfProp = propName => delete this.#nodeProperties[propName]
+        propIsCached = propName => typeof this.getCachedProperty(propName) !== "undefined"
+        crNodeWithPropNameIsCached = (contextPath, propName) => this.crNodeIsCached(contextPath) && this.propIsCached(propName)
 
-                const changer = JSON.parse(rawValue)[propName]
-                if (changer === undefined)
-                    continue
-
-                return {
-                    node: node,
-                    changer: changer
-                }
+        cacheNewValueOfPropForCrNode = (contextPath, propName, newVal) => {
+            if (this.crNodeIsCached(contextPath)) {
+                // same node same prop or same node and new prop
+                this.#nodeProperties[propName] = newVal
+            } else {
+                // must be a new node than before. We flush the cache.
+                // maybe Neos Ui will support at one point editing with multiple not applied changes
+                // of different nodes but until then this will work.
+                this.#nodeContextPath = contextPath
+                this.#nodeProperties = {}
+                this.#nodeProperties[propName] = newVal
             }
         }
+    }
+    const singleCrNodeValueCache = new SingleCrNodeValueCache()
 
-        function checkIfDomNodeIsTheCurrentCrElementOrHasItAsNextParrent(node) {
-            return domCrNode === node || domCrNode === node.closest("[data-__neos-node-contextpath]")
+    const getLastPropValueFromCacheOrCrCrNode = (crNode, propName) => {
+        if (singleCrNodeValueCache.crNodeWithPropNameIsCached(crNode.contextPath, propName)) {
+            return singleCrNodeValueCache.getCachedProperty(propName)
+        } else {
+            // get value of prop that is saved in the Cr/Redux Store
+            return crNode.properties[propName]
         }
-
-        function checkNodeAndChildrenForMatches(node, output = []){
-            if(node === null)
-                return
-
-            if(checkIfDomNodeIsTheCurrentCrElementOrHasItAsNextParrent(node) === false)
-                return
-
-            const match = getNodeAndChangerWhenNodeMatchesPropName(node)
-            if(match)
-                output.push(match)
-
-            for(const childNode of node.children)
-                checkNodeAndChildrenForMatches(childNode, output)
-
-            return output
-        }
-
-        return checkNodeAndChildrenForMatches(domCrNode)
     }
 
-    function callTheChangeFunctionOnThePropDomNodeWithData (domNode, changer, propName, newVal, oldVal) {
+    const callChangerFunctionWithDomNodeAndChanges = (domNode, changer, propName, newVal, oldVal) => {
         const functionOfProp = liveChangeFunctions[changer.function]
-        const arguments = changer.arguments === undefined ? {} : changer.arguments
+        // if no arguments/null is passed make it an array, so that default values work:
+        // function({arguments: something='default'}){}
+        const arguments = typeof changer.arguments === 'undefined' ? [] : changer.arguments
 
-        if (functionOfProp) {
-            functionOfProp({
-                el: domNode,
-                propName: propName,
-                newVal: newVal,
-                oldVal: oldVal,
-                arguments: arguments
-            })
+        if (typeof functionOfProp === 'undefined')
+            console.warn(`The function with name '${changer.function}' from changer`,changer,`could not be found in the global 'liveChangeFunctions' object:`, liveChangeFunctions)
+
+        functionOfProp({
+            el: domNode,
+            propName,
+            newVal,
+            oldVal,
+            arguments
+        })
+    }
+
+    const getDomNodesWithChangerByPropNameFromNodeList = (nodeList, propName) => {
+        const listOfDomNodesWithChanger = []
+        nodeList.forEach(node => {
+            for (const [key, rawValue] of Object.entries(node.dataset)) {
+                if (key.startsWith('__changeProp') === false)
+                    continue
+
+                const possibelMatchingChanger = JSON.parse(rawValue)
+                const changer = possibelMatchingChanger[propName]
+
+                if (typeof changer === 'undefined')
+                    continue
+
+                listOfDomNodesWithChanger.push({
+                    node,
+                    changer
+                })
+            }
+        })
+        return listOfDomNodesWithChanger
+    }
+
+    const changeMarkedDomNodesByProp = (propName, newVal, domNodesWithChangeProps, crNode, typeOfUserAction) => {
+        // dont reset props who havent changed and still come with the discard payload.
+        if (typeOfUserAction === DISCARD
+            && singleCrNodeValueCache.crNodeWithPropNameIsCached(crNode.contextPath, propName) === false)
             return
-        }
-        console.warn(`The function with name '${changer.function}' from changer`,changer,`could not be found in the global 'liveChangeFunctions' object:`, liveChangeFunctions)
-    }
 
-    function getValueOfPropThatIsSavedInTheCr(crNode, propName) {
-        return crNode.properties[propName]
-    }
-
-    function getOldValueOfPropertyByCrNodeAndNameAndCacheNewValueForLater (crNode, propName, newVal, typeOfUserAction) {
-        const nodeContextPath = crNode.contextPath
-        const lastSavedPropVal = getValueOfPropThatIsSavedInTheCr(crNode, propName)
-
-        if (lastNodeChange.nodeContextPath === nodeContextPath){
-            const lastCachedPropVal = lastNodeChange.properties[propName]
-            if (lastCachedPropVal){
-                // same node same prop
-                // save to cache
-                if (typeOfUserAction === "COMMIT") {
-                    lastNodeChange.properties[propName] = newVal
-                }
-                return lastCachedPropVal
-            }
-
-            // same node new prop
-            // save to cache
-            if (typeOfUserAction === "COMMIT") {
-                lastNodeChange.properties[propName] = newVal
-            }
-            return lastSavedPropVal
-        }
-
-        // new node than before
-        lastNodeChange.nodeContextPath = nodeContextPath
-        lastNodeChange.properties = {}
-        // save to cache (must be COMMIT)
-        lastNodeChange.properties[propName] = newVal
-        return lastSavedPropVal
-    }
-
-
-    function changeMarkedDomNodesByProp(propName, newVal, domCrNode, crNode, typeOfUserAction) {
-
-        const domNodesWithPropToChangeAndChanger = getAllMatchingDomNodesWithChangerByCrNode(domCrNode, propName)
+        const domNodesWithPropToChangeAndChanger = getDomNodesWithChangerByPropNameFromNodeList(domNodesWithChangeProps, propName)
 
         if (domNodesWithPropToChangeAndChanger.length === 0)
             return
 
-        const oldVal = getOldValueOfPropertyByCrNodeAndNameAndCacheNewValueForLater(
-            crNode, propName, newVal, typeOfUserAction)
+        const oldVal = getLastPropValueFromCacheOrCrCrNode(crNode, propName)
 
-        domNodesWithPropToChangeAndChanger.forEach(
-            ({node, changer}) => callTheChangeFunctionOnThePropDomNodeWithData(
+        if (typeOfUserAction === COMMIT) {
+            singleCrNodeValueCache.cacheNewValueOfPropForCrNode(crNode.contextPath, propName, newVal)
+        } else if (typeOfUserAction === DISCARD) (
+            singleCrNodeValueCache.clearCacheOfProp(propName)
+        )
+
+        domNodesWithPropToChangeAndChanger.map(
+            ({node, changer}) => callChangerFunctionWithDomNodeAndChanges(
                 node, changer, propName, newVal, oldVal))
     }
 
-    function initializeAndListenForChanges() {
-        document.addEventListener("MhsDesign.LiveInspectorJsEvents", (event) => {
+    const getAllDomNodesWithChangePropsByContextPath = contextPath => {
+        return document.querySelectorAll(`[data-__change-contextpath="${contextPath}"]`)
+    }
+
+    const initializeAndListenForChanges = () => {
+        document.addEventListener('MhsDesign.LiveInspectorJsEvents', event => {
             const crNode = event.detail.node
-            const domCrNode = document.querySelector(`[data-__neos-node-contextpath="${crNode.contextPath}"]`)
             const properties = event.detail.properties
             const typeOfUserAction = event.detail.message
+            const domNodesWithChangeProps = getAllDomNodesWithChangePropsByContextPath(crNode.contextPath)
 
-            if (domCrNode && typeOfUserAction === 'COMMIT' || typeOfUserAction === 'DISCARD') {
-                Object.entries(properties).forEach(([propName, newVal]) =>
-                    changeMarkedDomNodesByProp(propName, newVal, domCrNode, crNode, typeOfUserAction))
+            if (domNodesWithChangeProps.length > 0 && typeOfUserAction === COMMIT || typeOfUserAction === DISCARD) {
+                Object.entries(properties).map(([propName, newVal]) =>
+                    changeMarkedDomNodesByProp(propName, newVal, domNodesWithChangeProps, crNode, typeOfUserAction))
             }
         })
     }
     initializeAndListenForChanges()
 }
-
 reactToLiveInspectorChanges()

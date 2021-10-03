@@ -1,0 +1,8 @@
+
+prototype(Neos.Neos:Page).head.javascripts {
+    liveInspectorDomChange = afx`
+        <script @key='main' src={StaticResource.uri('MhsDesign.LiveInspectorDomChange', 'Public/ListenAndChangeDomByFunctions.js')}></script>
+        <script @key='functions' src={StaticResource.uri('MhsDesign.LiveInspectorDomChange', 'Public/DefaultChangeDomNodeFunctions.js')}></script>
+    `
+    liveInspectorDomChange.@if.backend = ${node.context.inBackend && node.context.currentRenderingMode.edit}
+}
