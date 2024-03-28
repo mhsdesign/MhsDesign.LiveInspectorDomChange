@@ -1,3 +1,16 @@
+> [!WARNING]  
+> This package is deprecated!
+> 
+> While declarative syntax is cool, the matter is simply too complex to have a seemingles simple framework like this.
+>
+> Its recommended to create a custom / well suited implemenation with the library https://github.com/mhsdesign/MhsDesign.LiveInspectorJsEvents
+> instead of relying on this opinionated package.
+>
+> For a tutorial to use the recommended library see:
+> https://github.com/mhsdesign/MhsDesign.LiveInspectorJsEvents#tutorial-for-a-self-made-implementation
+>
+> This package will likely be not declared compatible with Neos 8 as there are only very little usages left.
+
 # Edit your Neos Site with more* live feedback!
 *Neos features already a great inline editor: [www.neos.io](https://www.neos.io/features/inline-editing-true-wysiwyg.html)
 
